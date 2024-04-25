@@ -111,15 +111,17 @@ proto_fm350_setup() {
 	
 	}
 	[ "$pdp" = "IPV6" -o "$pdp" = "IPV4V6" ] && {
-		ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
-		json_init
-		json_add_string name "${interface}_6"
-		json_add_string ifname "@$interface"
-		json_add_string proto "dhcpv6"
-		json_add_string extendprefix 1
-		proto_add_dynamic_defaults
-		json_close_object
-		ubus call network add_dynamic "$(json_dump)"
+#		ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
+#		json_init
+#		json_add_string name "${interface}_6"
+#		json_add_string ifname "@$interface"
+#		json_add_string proto "dhcpv6"
+#		json_add_string extendprefix 1
+#		proto_add_dynamic_defaults
+#		json_close_object
+#		ubus call network add_dynamic "$(json_dump)"
+# AI给的自动获取方案，试试
+    dhclient -6 -v $ifname
 	}
 }
 
