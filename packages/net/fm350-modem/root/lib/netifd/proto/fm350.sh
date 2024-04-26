@@ -120,8 +120,10 @@ proto_fm350_setup() {
 #		proto_add_dynamic_defaults
 #		json_close_object
 #		ubus call network add_dynamic "$(json_dump)"
-# AI给的自动获取方案，试试
-    dhclient -6 -v $ifname
+# 使用 odhcp6c 命令来获取 IPv6 地址 xx不行
+    echo "please use default DHCPV6 client in openwrt!!!"
+#    odhcp6c -s /lib/netifd/dhcpv6.script -Ntry -P$ifname
+#    echo "init_$ifname interface IPV6 finish"
 	}
 }
 
