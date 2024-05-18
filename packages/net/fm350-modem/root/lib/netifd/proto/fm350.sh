@@ -120,19 +120,17 @@ proto_fm350_setup() {
 	
 	}
 	[ "$pdp" = "IPV6" -o "$pdp" = "IPV4V6" ] && {
-#		ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
-#		json_init
-#		json_add_string name "${interface}_6"
-#		json_add_string ifname "@$interface"
-#		json_add_string proto "dhcpv6"
-#		json_add_string extendprefix 1
-#		proto_add_dynamic_defaults
-#		json_close_object
-#		ubus call network add_dynamic "$(json_dump)"
-# 使用 odhcp6c 命令来获取 IPv6 地址 xx不行
-    echo "please use default DHCPV6 client in openwrt!!!"
-#    odhcp6c -s /lib/netifd/dhcpv6.script -Ntry -P$ifname
-#    echo "init_$ifname interface IPV6 finish"
+		ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
+		json_init
+		json_add_string name "${interface}_6"
+		json_add_string ifname "@$interface"
+		json_add_string proto "dhcpv6"
+		json_add_string extendprefix 1
+		proto_add_dynamic_defaults
+		json_close_object
+		ubus call network add_dynamic "$(json_dump)"
+ #   echo "please use default DHCPV6 client in openwrt!!!"
+   echo "init_$ifname interface IPV6 finish"
 	}
 }
 
