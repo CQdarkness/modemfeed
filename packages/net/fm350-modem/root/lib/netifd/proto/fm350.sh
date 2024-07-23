@@ -130,7 +130,7 @@ proto_fm350_setup() {
 		json_close_object
 		ubus call network add_dynamic "$(json_dump)"
 	}
-	# 在 proto_fm350_setup 函数末尾添加以下代码
+	# 在 proto_fm350_setup 函数末尾添加以下代码，&表示后台运行
   monitor_ip_changes $interface $device $profile &
 }
 
@@ -169,6 +169,7 @@ monitor_ip_changes() {
 
         # 处理 IPv4 地址变化
         if [ "$ip4addr" != "$old_ip4addr" ]; then
+            echo "Detected IPv4 address change: old_ip4addr=$old_ip4addr, new_ip4addr=$ip4addr"
             old_ip4addr="$ip4addr"
             ip4mask=24
             defroute=$(echo $ip4addr | awk -F [.] '{print $1"."$2"."$3".1"}')
@@ -185,6 +186,7 @@ monitor_ip_changes() {
 
         # 处理 IPv6 地址变化
         if [ "$lladdr" != "$old_lladdr" ]; then
+          echo "Detected IPv6 address change: old_lladdr=$old_lladdr, new_lladdr=$lladdr"
             old_lladdr="$lladdr"
             ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
 
