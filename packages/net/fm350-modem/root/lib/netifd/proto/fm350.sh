@@ -157,10 +157,9 @@ monitor_ip_changes() {
     local defroute
     local ns
     local dns1
-
+    logger  "start refresh fm350 ip  "
     while true; do
-        sleep 60  # 将刷新时间设为60秒
-        echo "start refresh fm350 ip  "
+        sleep 600  # 将刷新时间设为600秒
         # 获取配置信息
         DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
         ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
@@ -170,7 +169,7 @@ monitor_ip_changes() {
 
         # 处理 IPv4 地址变化
         if [ "$ip4addr" != "$old_ip4addr" ]; then
-            echo "Detected IPv4 address change: old_ip4addr=$old_ip4addr, new_ip4addr=$ip4addr"
+            logger  "Detected IPv4 address change: old_ip4addr=$old_ip4addr, new_ip4addr=$ip4addr"
             old_ip4addr="$ip4addr"
             ip4mask=24
             defroute=$(echo $ip4addr | awk -F [.] '{print $1"."$2"."$3".1"}')
@@ -187,7 +186,7 @@ monitor_ip_changes() {
 
         # 处理 IPv6 地址变化
         if [ "$lladdr" != "$old_lladdr" ]; then
-          echo "Detected IPv6 address change: old_lladdr=$old_lladdr, new_lladdr=$lladdr"
+          logger  "Detected IPv6 address change: old_lladdr=$old_lladdr, new_lladdr=$lladdr"
             old_lladdr="$lladdr"
             ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
 
