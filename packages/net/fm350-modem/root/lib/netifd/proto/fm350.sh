@@ -130,6 +130,8 @@ proto_fm350_setup() {
 		json_close_object
 		ubus call network add_dynamic "$(json_dump)"
 	}
+	# 在 proto_fm350_setup 函数末尾添加以下代码
+  monitor_ip_changes $interface $device $profile &
 }
 
 proto_fm350_teardown() {
@@ -141,6 +143,63 @@ proto_fm350_teardown() {
 	echo "Modem $device disconnected"
 	proto_kill_command "$interface"
 }
+
+monitor_ip_changes() {
+    local interface="$1"
+    local device="$2"
+    local profile="$3"
+    local old_ip4addr=""
+    local old_lladdr=""
+    local ip4addr
+    local lladdr
+    local ip4mask
+    local defroute
+    local ns
+    local dns1
+
+    while true; do
+        sleep 60  # 将刷新时间设为60秒
+
+        # 获取配置信息
+        DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
+        ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
+        lladdr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $3}') >/dev/null 2>&1
+        ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
+        dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
+
+        # 处理 IPv4 地址变化
+        if [ "$ip4addr" != "$old_ip4addr" ]; then
+            old_ip4addr="$ip4addr"
+            ip4mask=24
+            defroute=$(echo $ip4addr | awk -F [.] '{print $1"."$2"."$3".1"}')
+
+            proto_init_update "$interface" 1
+            proto_add_ipv4_address $ip4addr $ip4mask
+            proto_add_ipv4_route "0.0.0.0" 0 $defroute $ip4addr
+            if ! [ "$(echo $dns1 | grep 0.0.0.0)" ]; then
+                proto_add_dns_server "$dns1"
+                echo "Using IPv4 DNS: $dns1"
+            fi
+            proto_send_update "$interface"
+        fi
+
+        # 处理 IPv6 地址变化
+        if [ "$lladdr" != "$old_lladdr" ]; then
+            old_lladdr="$lladdr"
+            ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
+
+            json_init
+            json_add_string name "${interface}_6"
+            json_add_string ifname "@$interface"
+            json_add_string proto "dhcpv6"
+            json_add_string extendprefix 1
+            proto_add_dynamic_defaults
+            json_close_object
+            ubus call network add_dynamic "$(json_dump)"
+        fi
+    done
+}
+
 
 add_protocol fm350
 
