@@ -131,7 +131,7 @@ proto_fm350_setup() {
 		ubus call network add_dynamic "$(json_dump)"
 	}
 	# 在 proto_fm350_setup 函数末尾添加以下代码，&表示后台运行
-  monitor_ip_changes $interface $device $profile &
+  monitor_ip_changes $interface $device $profile $ifname &
 }
 
 proto_fm350_teardown() {
@@ -148,6 +148,7 @@ monitor_ip_changes() {
     local interface="$1"
     local device="$2"
     local profile="$3"
+    local ifname="$4"
     local old_ip4addr=""
     local old_lladdr=""
     local ip4addr
@@ -159,7 +160,7 @@ monitor_ip_changes() {
 
     while true; do
         sleep 60  # 将刷新时间设为60秒
-
+        echo "start refresh fm350 ip  "
         # 获取配置信息
         DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
         ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
@@ -174,7 +175,7 @@ monitor_ip_changes() {
             ip4mask=24
             defroute=$(echo $ip4addr | awk -F [.] '{print $1"."$2"."$3".1"}')
 
-            proto_init_update "$interface" 1
+            proto_init_update "$ifname" 1
             proto_add_ipv4_address $ip4addr $ip4mask
             proto_add_ipv4_route "0.0.0.0" 0 $defroute $ip4addr
             if ! [ "$(echo $dns1 | grep 0.0.0.0)" ]; then
