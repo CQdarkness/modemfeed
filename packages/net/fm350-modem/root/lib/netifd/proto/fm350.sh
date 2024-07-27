@@ -87,7 +87,7 @@ proto_fm350_setup() {
 		proto_notify_error "$interface" CONFIGURE_FAILED
 		return 1
 	fi
-	
+
 	case $ip4addr in
 		*FE80*)
 			lladdr=$ip4addr
@@ -118,7 +118,7 @@ proto_fm350_setup() {
 		proto_add_data
 		proto_close_data
 		proto_send_update "$interface"
-	
+
 	}
 	#使用独立的dhcpv6客户端挂载在eth1，可以自动刷新租期
 	[ "$pdp" = "IPV6" -o "$pdp" = "IPV4V6" ] && {
@@ -160,50 +160,94 @@ monitor_ip_changes() {
     local defroute
     local ns
     local dns1
+    local interface_status
 
     while true; do
         sleep 30  # 将刷新时间设为30秒
-        # 获取IP配置信息
-        DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
-        ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
-        ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
-        dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
-        logger  "start monitor fm350 status,IPV4:$ip4addr "
-        #检测IPV4是否为空，为空则重连
-        if [ -z "$ip4addr" ]; then
-          logger  "Detected fm350 lost ,reconnecting...."
-          status=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-reconnect.gcom)
-          logger  "fm350 status:$status"
-          #判断重连是否成功
-          if [ -n "$status" ] &&  echo "$status" | grep -q " +CGEV: ME PDN ACT 1"; then
-            logger  "fm350 reconnect success !"
-          fi
-          #重新获取IP信息
-          DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
-                  ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
-                  ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
-                  dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
-        fi
-        # 处理 IPv4 地址变化
-        if [ "$ip4addr" != "$old_ip4addr" ]; then
-            logger  "Detected IPv4 address change: old_ip4addr=$old_ip4addr, new_ip4addr=$ip4addr"
-            old_ip4addr="$ip4addr"
-            ip4mask=24
-            defroute=$(echo $ip4addr | awk -F [.] '{print $1"."$2"."$3".1"}')
+        #检查接口状态，接口正常才进行下一步操作
+         local status=$(ubus call network.interface.$interface status 2>/dev/null)
+        # 检查接口是否成功获取状态
+        if [ $? -eq 0 ]; then
+          local interface_up=$(echo "$status" | grep '"up": true' > /dev/null && echo "true" || echo "false")
+            if [ "$interface_up" == "true" ]; then
+              # 获取IP配置信息
+              DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
+              ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
+              ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
+              dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
+              logger  "start monitor fm350 status,IPV4:$ip4addr "
+              #检测IPV4是否为空，为空则重连
+              if [ -z "$ip4addr" ]; then
+                logger  "Detected fm350 lost ,reconnecting...."
+                status=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-reconnect.gcom)
+                logger  "fm350 status:$status"
+                #判断重连是否成功
+                if [ -n "$status" ] &&  echo "$status" | grep -q " +CGEV: ME PDN ACT 1"; then
+                  logger  "fm350 reconnect success !"
+                fi
+                #重新获取IP信息
+                DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
+                        ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
+                        ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
+                        dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
+              fi
 
-            #重新初始化
-            proto_init_update "$ifname" 1
-            proto_add_ipv4_address $ip4addr $ip4mask
-            proto_add_ipv4_route "0.0.0.0" 0 $defroute $ip4addr
-            if ! [ "$(echo $dns1 | grep 0.0.0.0)" ]; then
-                proto_add_dns_server "$dns1"
-                echo "Using IPv4 DNS: $dns1"
+              if [ "$ip4addr" != "$old_ip4addr" ]; then
+                 # 处理 IPv4 地址变化
+                  logger  "Detected IPv4 address change: old_ip4addr=$old_ip4addr, new_ip4addr=$ip4addr"
+                  old_ip4addr="$ip4addr"
+                  ip4mask=24
+                  defroute=$(echo $ip4addr | awk -F [.] '{print $1"."$2"."$3".1"}')
+                  #重新初始化
+                  proto_init_update "$ifname" 1
+                  proto_add_ipv4_address $ip4addr $ip4mask
+                  proto_add_ipv4_route "0.0.0.0" 0 $defroute $ip4addr
+                  if ! [ "$(echo $dns1 | grep 0.0.0.0)" ]; then
+                      proto_add_dns_server "$dns1"
+                      echo "Using IPv4 DNS: $dns1"
+                  fi
+                  proto_send_update "$interface"
+                # 处理 IPv6 删除重建
+                remove_network_interface "${interface}_6"
+                #新建接口
+                json_init
+                		json_add_string name "${interface}_6"
+                		json_add_string ifname "@$interface"
+                		json_add_string proto "dhcpv6"
+                		json_add_string extendprefix 1
+                		proto_add_dynamic_defaults
+                		json_close_object
+                ubus call network add_dynamic "$(json_dump)"
+              fi
+            else
+                logger "$interface interface_status is down"
             fi
-            proto_send_update "$interface"
+        else
+            logger "$interface interface_status is unknown"
         fi
     done
 }
 
+remove_network_interface() {
+    local interface=$1
+
+    # 确保接口名不为空
+    if [ -z "$interface" ]; then
+        echo "错误: 接口名不能为空"
+        return 1
+    fi
+
+    # 执行 ubus 命令移除接口
+    ubus call network.interface remove "{\"interface\":\"$interface\"}"
+
+    # 检查命令执行状态
+    if [ $? -eq 0 ]; then
+        echo "接口 $interface 已成功移除"
+    else
+        echo "接口 $interface 移除失败"
+        return 1
+    fi
+}
 
 add_protocol fm350
 
