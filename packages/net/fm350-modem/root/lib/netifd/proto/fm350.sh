@@ -80,6 +80,7 @@ proto_fm350_setup() {
 	DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
 	ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
 	lladdr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $3}') >/dev/null 2>&1
+	logger "ipv4addr:$ip4addr,lladdr:$lladdr"
 	ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
 	dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
 	if ! [ $ip4addr ]; then
@@ -119,6 +120,7 @@ proto_fm350_setup() {
 		proto_send_update "$interface"
 	
 	}
+	#使用独立的dhcpv6客户端挂载在eth1，可以自动刷新租期
 	[ "$pdp" = "IPV6" -o "$pdp" = "IPV4V6" ] && {
 		ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
 		json_init
@@ -131,7 +133,7 @@ proto_fm350_setup() {
 		ubus call network add_dynamic "$(json_dump)"
 	}
 	# 在 proto_fm350_setup 函数末尾添加以下代码，&表示后台运行
-  monitor_ip_changes $interface $device $profile $ifname &
+  monitor_ip_changes $interface $device $profile $ifname $ip4addr &
 }
 
 proto_fm350_teardown() {
@@ -144,12 +146,13 @@ proto_fm350_teardown() {
 	proto_kill_command "$interface"
 }
 
+#FM350保活监控，检测模块是否掉线，刷新IP地址，清理无效IP路由信息
 monitor_ip_changes() {
     local interface="$1"
     local device="$2"
     local profile="$3"
     local ifname="$4"
-    local old_ip4addr=""
+    local old_ip4addr="$5"
     local old_lladdr=""
     local ip4addr
     local lladdr
@@ -157,16 +160,30 @@ monitor_ip_changes() {
     local defroute
     local ns
     local dns1
-    logger  "start refresh fm350 ip  "
+
     while true; do
-        sleep 600  # 将刷新时间设为600秒
-        # 获取配置信息
+        sleep 30  # 将刷新时间设为30秒
+        # 获取IP配置信息
         DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
         ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
-        lladdr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $3}') >/dev/null 2>&1
         ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
         dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
-
+        logger  "start monitor fm350 status,IPV4:$ip4addr "
+        #检测IPV4是否为空，为空则重连
+        if [ -z "$ip4addr" ]; then
+          logger  "Detected fm350 lost ,reconnecting...."
+          status=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-reconnect.gcom)
+          logger  "fm350 status:$status"
+          #判断重连是否成功
+          if [ -n "$status" ] && [ "$status" = "+CGEV:MEPDNACT1" ]; then
+            logger  "fm350 reconnect success !"
+          fi
+          #重新获取IP信息
+          DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
+                  ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
+                  ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
+                  dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
+        fi
         # 处理 IPv4 地址变化
         if [ "$ip4addr" != "$old_ip4addr" ]; then
             logger  "Detected IPv4 address change: old_ip4addr=$old_ip4addr, new_ip4addr=$ip4addr"
@@ -174,6 +191,7 @@ monitor_ip_changes() {
             ip4mask=24
             defroute=$(echo $ip4addr | awk -F [.] '{print $1"."$2"."$3".1"}')
 
+            #重新初始化
             proto_init_update "$ifname" 1
             proto_add_ipv4_address $ip4addr $ip4mask
             proto_add_ipv4_route "0.0.0.0" 0 $defroute $ip4addr
@@ -182,22 +200,6 @@ monitor_ip_changes() {
                 echo "Using IPv4 DNS: $dns1"
             fi
             proto_send_update "$interface"
-        fi
-
-        # 处理 IPv6 地址变化
-        if [ "$lladdr" != "$old_lladdr" ]; then
-          logger  "Detected IPv6 address change: old_lladdr=$old_lladdr, new_lladdr=$lladdr"
-            old_lladdr="$lladdr"
-            ip -6 address add ${lladdr}/64 dev $ifname >/dev/null 2>&1
-
-            json_init
-            json_add_string name "${interface}_6"
-            json_add_string ifname "@$interface"
-            json_add_string proto "dhcpv6"
-            json_add_string extendprefix 1
-            proto_add_dynamic_defaults
-            json_close_object
-            ubus call network add_dynamic "$(json_dump)"
         fi
     done
 }
