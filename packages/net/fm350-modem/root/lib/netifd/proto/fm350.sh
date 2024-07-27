@@ -132,8 +132,15 @@ proto_fm350_setup() {
 		json_close_object
 		ubus call network add_dynamic "$(json_dump)"
 	}
-	# 在 proto_fm350_setup 函数末尾添加以下代码，&表示后台运行
-  monitor_ip_changes $interface $device $profile $ifname &
+	#检测，避免重复调用
+	if ! pgrep -f "sleep 33" > /dev/null; then
+	  	    # 在 proto_fm350_setup 函数末尾添加以下代码，&表示后台运行
+           monitor_ip_changes "$interface" "$device" $profile "$ifname" &
+      else
+          echo "Monitoring task for $interface is already running."
+      fi
+
+
 }
 
 proto_fm350_teardown() {
@@ -164,7 +171,7 @@ monitor_ip_changes() {
     local interface_6
 
     while true; do
-        sleep 30  # 将刷新时间设为30秒
+        sleep 33  # 将刷新时间设为33秒
         #检查接口状态，接口正常才进行下一步操作
         interface_6="${interface}_6"
         logger "interface_6:$interface_6"
