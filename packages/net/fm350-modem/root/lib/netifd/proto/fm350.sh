@@ -133,7 +133,7 @@ proto_fm350_setup() {
 		ubus call network add_dynamic "$(json_dump)"
 	}
 	# 在 proto_fm350_setup 函数末尾添加以下代码，&表示后台运行
-  monitor_ip_changes $interface $device $profile $ifname $ip4addr &
+  monitor_ip_changes $interface $device $profile $ifname &
 }
 
 proto_fm350_teardown() {
@@ -152,7 +152,7 @@ monitor_ip_changes() {
     local device="$2"
     local profile="$3"
     local ifname="$4"
-    local old_ip4addr="$5"
+    local old_ip4addr=""
     local old_lladdr=""
     local ip4addr
     local lladdr
@@ -168,17 +168,20 @@ monitor_ip_changes() {
         #检查接口状态，接口正常才进行下一步操作
         interface_6="${interface}_6"
         logger "interface_6:$interface_6"
-         local status=$(ubus call network.interface.$interface_6 status 2>/dev/null)
+        #如果主接口down了，则跳出循环
+        local status=$(ubus call network.interface.$interface status 2>/dev/null)
         # 检查接口是否成功获取状态
         if [ $? -eq 0 ]; then
           local interface_up=$(echo "$status" | grep '"up": true' > /dev/null && echo "true" || echo "false")
             if [ "$interface_up" == "true" ]; then
+              #从主接口获取IP
+              old_ip4addr=$(echo "$status" | grep '"address":' | awk -F'"' '{print $4}')
               # 获取IP配置信息
               DATA=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-config.gcom)
               ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
               ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
               dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
-              logger  "start monitor fm350 status,IPV4:$ip4addr "
+              logger  "start monitor fm350 status,old IPV4:$old_ip4addr,new IPV4:$ip4addr"
               #检测IPV4是否为空，为空则重连
               if [ -z "$ip4addr" ]; then
                 logger  "Detected fm350 lost ,reconnecting...."
@@ -212,10 +215,11 @@ monitor_ip_changes() {
                   fi
                   proto_send_update "$interface"
                   #等待重新初始化完成
+                  logger "sleep 30s wait main $interface interface refresh "
                   sleep 30
+                  logger "sleep out ,ready to new interface_6:$interface_6"
                 # 处理 IPv6 删除重建
                 remove_network_interface "$interface_6"
-                logger "ready to new interface_6:$interface_6"
                 #新建接口
                 json_init
                 		json_add_string name "$interface_6"
@@ -230,12 +234,24 @@ monitor_ip_changes() {
                   fi
                   #等待重新初始化完成
                   sleep 30
+                  logger "get  interface: $interface_6 status "
+                  local status_6=$(ubus call network.interface.$interface_6 status 2>/dev/null)
+                          # 检查接口是否成功获取状态
+                          if [ $? -eq 0 ]; then
+                            local interface_up=$(echo "$status_6" | grep '"up": true' > /dev/null && echo "true" || echo "false")
+                              if [ "$interface_up" == "true" ]; then
+                                 logger "$interface_6  interface_status is up"
+                              else
+                                 logger "$interface_6  interface_status is down ,still wait "
+                              fi
+                          fi
               fi
             else
-                logger "$interface interface_status is down"
+                logger "$interface main interface_status is down, monitor exit!"
+                break
             fi
         else
-            logger "$interface interface_status is unknown"
+            logger "$interface main interface_status is unknown"
         fi
     done
 }
