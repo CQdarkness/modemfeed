@@ -222,11 +222,13 @@ monitor_ip_changes() {
                   fi
                   proto_send_update "$interface"
                   #等待重新初始化完成
-                  logger "sleep 30s wait main $interface interface refresh "
-                  sleep 30
+                  logger "sleep 10s wait main $interface interface refresh "
+                  sleep 10
                   logger "sleep out ,ready to new interface_6:$interface_6"
                 # 处理 IPv6 删除重建
                 remove_network_interface "$interface_6"
+                #删除后等待状态刷新
+                sleep 10
                 #新建接口
                 json_init
                 		json_add_string name "$interface_6"
@@ -240,7 +242,7 @@ monitor_ip_changes() {
                         logger "interface: $interface_6 already added !"
                   fi
                   #等待重新初始化完成
-                  sleep 30
+                  sleep 10
                   logger "get  interface: $interface_6 status "
                   local status_6=$(ubus call network.interface.$interface_6 status 2>/dev/null)
                           # 检查接口是否成功获取状态
