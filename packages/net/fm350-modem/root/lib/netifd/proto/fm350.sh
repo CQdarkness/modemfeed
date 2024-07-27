@@ -175,7 +175,7 @@ monitor_ip_changes() {
           status=$(CID=$profile gcom -d $device -s /etc/gcom/fm350-reconnect.gcom)
           logger  "fm350 status:$status"
           #判断重连是否成功
-          if [ -n "$status" ] &&  echo "$status" | grep -q "+CGEV:MEPDNACT1"; then
+          if [ -n "$status" ] &&  echo "$status" | grep -q " +CGEV: ME PDN ACT 1"; then
             logger  "fm350 reconnect success !"
           fi
           #重新获取IP信息
