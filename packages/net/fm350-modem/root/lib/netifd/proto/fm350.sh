@@ -161,11 +161,14 @@ monitor_ip_changes() {
     local ns
     local dns1
     local interface_status
+    local interface_6
 
     while true; do
         sleep 30  # 将刷新时间设为30秒
         #检查接口状态，接口正常才进行下一步操作
-         local status=$(ubus call network.interface.$interface status 2>/dev/null)
+        interface_6="${interface}_6"
+        logger "interface_6:$interface_6"
+         local status=$(ubus call network.interface.$interface_6 status 2>/dev/null)
         # 检查接口是否成功获取状态
         if [ $? -eq 0 ]; then
           local interface_up=$(echo "$status" | grep '"up": true' > /dev/null && echo "true" || echo "false")
@@ -190,6 +193,7 @@ monitor_ip_changes() {
                         ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
                         ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
                         dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
+                 logger  "redo get IP status:$ip4addr"
               fi
 
               if [ "$ip4addr" != "$old_ip4addr" ]; then
@@ -204,20 +208,28 @@ monitor_ip_changes() {
                   proto_add_ipv4_route "0.0.0.0" 0 $defroute $ip4addr
                   if ! [ "$(echo $dns1 | grep 0.0.0.0)" ]; then
                       proto_add_dns_server "$dns1"
-                      echo "Using IPv4 DNS: $dns1"
+                      logger "Using IPv4 DNS: $dns1"
                   fi
                   proto_send_update "$interface"
+                  #等待重新初始化完成
+                  sleep 30
                 # 处理 IPv6 删除重建
-                remove_network_interface "${interface}_6"
+                remove_network_interface "$interface_6"
+                logger "ready to new interface_6:$interface_6"
                 #新建接口
                 json_init
-                		json_add_string name "${interface}_6"
+                		json_add_string name "$interface_6"
                 		json_add_string ifname "@$interface"
                 		json_add_string proto "dhcpv6"
                 		json_add_string extendprefix 1
                 		proto_add_dynamic_defaults
                 		json_close_object
                 ubus call network add_dynamic "$(json_dump)"
+                 if [ $? -eq 0 ]; then
+                        logger "interface: $interface_6 already added !"
+                  fi
+                  #等待重新初始化完成
+                  sleep 30
               fi
             else
                 logger "$interface interface_status is down"
@@ -233,7 +245,7 @@ remove_network_interface() {
 
     # 确保接口名不为空
     if [ -z "$interface" ]; then
-        echo "错误: 接口名不能为空"
+        logger "错误: 接口名不能为空"
         return 1
     fi
 
@@ -242,9 +254,9 @@ remove_network_interface() {
 
     # 检查命令执行状态
     if [ $? -eq 0 ]; then
-        echo "接口 $interface 已成功移除"
+        logger "接口 $interface 已成功移除"
     else
-        echo "接口 $interface 移除失败"
+        logger "接口 $interface 移除失败"
         return 1
     fi
 }
