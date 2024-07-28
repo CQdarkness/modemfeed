@@ -174,7 +174,7 @@ monitor_ip_changes() {
         sleep 33  # 将刷新时间设为33秒
         #检查接口状态，接口正常才进行下一步操作
         interface_6="${interface}_6"
-        logger "interface_6:$interface_6"
+#        logger "interface_6:$interface_6"
         #如果主接口down了，则跳出循环
         local status=$(ubus call network.interface.$interface status 2>/dev/null)
         # 检查接口是否成功获取状态
@@ -188,7 +188,7 @@ monitor_ip_changes() {
               ip4addr=$(echo "$DATA" | awk -F [,] '/^\+CGPADDR/{gsub("\r|\"", ""); print $2}') >/dev/null 2>&1
               ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
               dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
-              logger  "start monitor fm350 status,old IPV4:$old_ip4addr,new IPV4:$ip4addr"
+#              logger  "start monitor fm350 status,old IPV4:$old_ip4addr,new IPV4:$ip4addr"
               #检测IPV4是否为空，为空则重连
               if [ -z "$ip4addr" ]; then
                 logger  "Detected fm350 lost ,reconnecting...."
@@ -228,7 +228,7 @@ monitor_ip_changes() {
                 # 处理 IPv6 删除重建
                 remove_network_interface "$interface_6"
                 #删除后等待状态刷新
-                sleep 10
+                sleep 5
                 #新建接口
                 json_init
                 		json_add_string name "$interface_6"
@@ -242,7 +242,7 @@ monitor_ip_changes() {
                         logger "interface: $interface_6 already added !"
                   fi
                   #等待重新初始化完成
-                  sleep 10
+                  sleep 15
                   logger "get  interface: $interface_6 status "
                   local status_6=$(ubus call network.interface.$interface_6 status 2>/dev/null)
                           # 检查接口是否成功获取状态
