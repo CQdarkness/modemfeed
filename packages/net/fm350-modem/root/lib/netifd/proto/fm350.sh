@@ -135,6 +135,7 @@ proto_fm350_setup() {
 	#检测，避免重复调用
 	if ! pgrep -f "sleep 33" > /dev/null; then
 	  	    # 在 proto_fm350_setup 函数末尾添加以下代码，&表示后台运行
+	  	    echo "Monitoring task for $interface is started."
            monitor_ip_changes "$interface" "$device" $profile "$ifname" &
       else
           echo "Monitoring task for $interface is already running."
