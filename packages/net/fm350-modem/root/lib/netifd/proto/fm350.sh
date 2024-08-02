@@ -190,8 +190,6 @@ monitor_ip_changes() {
               ns=$(echo "$DATA" | awk -F [,] '/^\+GTDNS: /{gsub("\r|\"",""); print $2" "$3}' | sed 's/^[[:space:]]//g')
               dns1=$(echo "$ns" | grep -v "0.0.0.0" | tail -1)
 #              logger  "start monitor fm350 status,old IPV4:$old_ip4addr,new IPV4:$ip4addr"
-              #手动续租
-              manually_renew
               #检测IPV4是否为空，为空则重连
               if [ -z "$ip4addr" ]; then
                 logger  "Detected fm350 lost ,reconnecting...."
@@ -209,7 +207,7 @@ monitor_ip_changes() {
                  logger  "redo get IP status:$ip4addr"
               fi
 
-              if [ "$ip4addr" != "$old_ip4addr" ]; then
+              if  [ -n "$ip4addr" ] && [ "$ip4addr" != "$old_ip4addr" ]; then
                  # 处理 IPv4 地址变化
                   logger  "Detected IPv4 address change: old_ip4addr=$old_ip4addr, new_ip4addr=$ip4addr"
                   old_ip4addr="$ip4addr"
@@ -293,29 +291,32 @@ manually_renew(){
 
   # 获取 WAN6 接口的状态信息
   status=$(ubus call network.interface.wan6 status)
+  if [ $? -eq 0 ] && echo $status | jsonfilter -e '@["up"]' | grep 'true'; then
+      # 提取当前绑定的设备
+      device=$(echo $status | jsonfilter -e '@["device"]')
 
-    # 提取当前绑定的设备
-    device=$(echo $status | jsonfilter -e '@["device"]')
+      # 如果当前绑定的设备不是 eth1，则重新绑定
+      if [ "$device" != "eth1" ]; then
+          uci set network.wan6.ifname='eth1'
+          uci commit network
+          ifdown wan6
+          ifup wan6
+          logger "WAN6 interface was not bound to eth1. It has been reconfigured and restarted."
+      fi
 
-    # 如果当前绑定的设备不是 eth1，则重新绑定
-    if [ "$device" != "eth1" ]; then
-        uci set network.wan6.ifname='eth1'
-        uci commit network
+    # 提取租约剩余时间（假设租约时间在 JSON 数据的 "route" 字段中的 "valid" 字段中）
+    lease_time=$(echo $status | jsonfilter -e '@["route"][0]["valid"]')
+
+    # 检查租约剩余时间是否小于 3600 秒
+    if [ "$lease_time" -lt 3600 ]; then
+        # 租约时间小于 3600 秒，重新启动 WAN6 接口
         ifdown wan6
         ifup wan6
-        logger "WAN6 interface was not bound to eth1. It has been reconfigured and restarted."
+        logger "WAN6 interface has been restarted to renew the lease."
     fi
-
-  # 提取租约剩余时间（假设租约时间在 JSON 数据的 "route" 字段中的 "valid" 字段中）
-  lease_time=$(echo $status | jsonfilter -e '@["route"][0]["valid"]')
-
-  # 检查租约剩余时间是否小于 3600 秒
-  if [ "$lease_time" -lt 3600 ]; then
-      # 租约时间小于 3600 秒，重新启动 WAN6 接口
-      ifdown wan6
-      ifup wan6
-      logger "WAN6 interface has been restarted to renew the lease."
-  fi
+    else
+      logger "wan6 not ready,wait next time refresh,status: $status"
+   fi
 }
 
 add_protocol fm350
