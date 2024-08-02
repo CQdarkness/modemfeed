@@ -257,7 +257,7 @@ monitor_ip_changes() {
                           fi
               fi
               #租约刷新
-              manually_renew
+              #manually_renew
             else
                 logger "$interface main interface_status is down, monitor exit!"
                 break
@@ -289,9 +289,11 @@ remove_network_interface() {
     fi
 }
 
+#使用cronb单独运行 */5 * * * * 每5分钟刷新
 manually_renew(){
 
 # 获取 WAN6 接口的状态信息
+logger "start monitor ipv6 route valid"
 status=$(ubus call network.interface.wan6 status)
 if [ $? -eq 0 ] && echo $status | jsonfilter -e '@["up"]' | grep -q 'true'; then
     # 提取当前绑定的设备
@@ -308,7 +310,7 @@ if [ $? -eq 0 ] && echo $status | jsonfilter -e '@["up"]' | grep -q 'true'; then
 
     # 提取租约剩余时间（假设租约时间在 JSON 数据的 "route" 字段中的 "valid" 字段中）
     lease_time=$(echo $status | jsonfilter -e '@["route"][0]["valid"]')
-
+    logger "lease_time : $lease_time"
     # 检查租约剩余时间是否小于 3600 秒
     if [ "$lease_time" -lt 3600 ]; then
         # 租约时间小于 3600 秒，重新启动 WAN6 接口
