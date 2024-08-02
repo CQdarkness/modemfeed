@@ -256,6 +256,8 @@ monitor_ip_changes() {
                               fi
                           fi
               fi
+              #租约刷新
+              manually_renew
             else
                 logger "$interface main interface_status is down, monitor exit!"
                 break
