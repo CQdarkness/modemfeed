@@ -289,20 +289,20 @@ remove_network_interface() {
 
 manually_renew(){
 
-  # 获取 WAN6 接口的状态信息
-  status=$(ubus call network.interface.wan6 status)
-  if [ $? -eq 0 ] && echo $status | jsonfilter -e '@["up"]' | grep 'true'; then
-      # 提取当前绑定的设备
-      device=$(echo $status | jsonfilter -e '@["device"]')
+# 获取 WAN6 接口的状态信息
+status=$(ubus call network.interface.wan6 status)
+if [ $? -eq 0 ] && echo $status | jsonfilter -e '@["up"]' | grep -q 'true'; then
+    # 提取当前绑定的设备
+    device=$(echo $status | jsonfilter -e '@["device"]')
 
-      # 如果当前绑定的设备不是 eth1，则重新绑定
-      if [ "$device" != "eth1" ]; then
-          uci set network.wan6.ifname='eth1'
-          uci commit network
-          ifdown wan6
-          ifup wan6
-          logger "WAN6 interface was not bound to eth1. It has been reconfigured and restarted."
-      fi
+    # 如果当前绑定的设备不是 eth1，则重新绑定
+    if [ "$device" != "eth1" ]; then
+        uci set network.wan6.ifname='eth1'
+        uci commit network
+        ifdown wan6
+        ifup wan6
+        logger "WAN6 interface was not bound to eth1. It has been reconfigured and restarted."
+    fi
 
     # 提取租约剩余时间（假设租约时间在 JSON 数据的 "route" 字段中的 "valid" 字段中）
     lease_time=$(echo $status | jsonfilter -e '@["route"][0]["valid"]')
@@ -314,9 +314,9 @@ manually_renew(){
         ifup wan6
         logger "WAN6 interface has been restarted to renew the lease."
     fi
-    else
-      logger "wan6 not ready,wait next time refresh,status: $status"
-   fi
+else
+    logger "wan6 not ready, wait for the next refresh, status: $status"
+fi
 }
 
 add_protocol fm350
