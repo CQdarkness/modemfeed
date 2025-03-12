@@ -312,7 +312,7 @@ if [ $? -eq 0 ] && echo $status | jsonfilter -e '@["up"]' | grep -q 'true'; then
     lease_time=$(echo $status | jsonfilter -e '@["route"][0]["valid"]')
     logger "lease_time : $lease_time"
     # 检查租约剩余时间是否小于 3600 秒
-    if [ "$lease_time" -lt 3600 ]; then
+    if  [ -z "$lease_time" ] || [ "$lease_time" -lt 3600 ]; then
         # 租约时间小于 3600 秒，重新启动 WAN6 接口
         ifdown wan6
         ifup wan6
